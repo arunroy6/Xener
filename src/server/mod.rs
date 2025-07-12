@@ -4,6 +4,8 @@ mod tests;
 use std::net::{TcpListener, TcpStream};
 use std::io::{self, Read, Write};
 
+use crate::http;
+
 pub struct Server {
     address: String,
 }
@@ -40,15 +42,27 @@ impl Server {
         let peer_addr = stream.peer_addr()?;
 
         println!("Connection established from: {}", peer_addr);
-        
-        let mut buffer = [0; 1024];
-        let bytes_read = stream.read(&mut buffer)?;
-        let request = String::from_utf8_lossy(&buffer[0..bytes_read]);
+        let request = match http::request::Request::from_stream(&mut stream) {
+            Ok(req) => req,
+            Err(e) => {
+                eprintln!("Error parsing request: {}", e);
 
-        println!("Received request: {}", request);
+                let response = http::response::Response::new()
+                    .with_status(http::StatusCode::BadRequest)
+                    .with_text(http::StatusCode::BadRequest.reason_phrase());
 
-        let response = "HTTP/1.1 200 OK \r\nContent-Length: 13\r\n\r\nHello, World!";
-        stream.write_all(response.as_bytes())?;
+                response.write_to(&mut stream)?;
+                return Ok(());
+            }
+        };
+
+        println!("Received {:?} request for {}", request.method, request.path);
+
+        let response = http::response::Response::new()
+            .with_status(http::StatusCode::Ok)
+            .with_text("Hello From Xener Server!");
+
+        response.write_to(&mut stream)?;
 
         println!("Response sent to {}", peer_addr);
 

@@ -27,14 +27,19 @@ mod tests {
         stream.write_all(request.as_bytes())
             .expect("Failed to send request");
 
-        let mut buffer = [0; 1024];
-        let bytest_read = stream.read(&mut buffer)
-            .expect("Failed to read response");
-
-        let response = String::from_utf8_lossy(&buffer[0..bytest_read]);
+        let mut buffer = Vec::new();
+        loop {
+            let mut temp = [0; 1024];
+            let bytes_read = stream.read(&mut temp).expect("Failed to read response");
+            if bytes_read == 0 {
+                break;
+            }
+            buffer.extend_from_slice(&temp[..bytes_read]);
+        }
+        let response = String::from_utf8_lossy(&buffer);
 
         assert!(response.starts_with("HTTP/1.1 200 OK"), "Response should start with HTTP/1.1 200 OK");
-        assert!(response.contains("Hello, World!"), "Response should contain 'Hello, World!'");
+        assert!(response.contains("Hello From Xener Server!"), "Response should contain 'Hello From Xener Server!'");
     }
     
     #[test]
