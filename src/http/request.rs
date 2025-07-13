@@ -62,6 +62,16 @@ impl Request {
             body,
         })
     }
+
+    // Support for case insensitive header lookup
+    pub fn get_header(&self, name: &str) -> Option<&String> {
+        for (key, value) in &self.headers {
+            if key.to_lowercase() == name.to_lowercase() {
+                return Some(value);
+            }
+        }
+        None
+    }
 }
 
 
@@ -82,6 +92,6 @@ mod tests {
         assert_eq!(request.method, Method::from("GET"));
         assert_eq!(request.version, Version::from("HTTP/1.1"));
         assert_eq!(request.body, b"Hello");
-        assert_eq!(request.headers.get("Content-Length"), Some(&"5".to_string()))
+        assert_eq!(request.get_header("Content-Length"), Some(&"5".to_string()))
     }
 }
