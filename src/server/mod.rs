@@ -1,23 +1,27 @@
+mod static_handler;
 #[cfg(test)]
 mod tests;
 
+use self::static_handler::StaticFileHandler;
+use std::io::{self};
 use std::net::{TcpListener, TcpStream};
-use std::io::{self, Read, Write};
 
 use crate::http;
 
 pub struct Server {
     address: String,
+    static_handler: StaticFileHandler,
 }
 
 impl Server {
-    pub fn new(address: &str) -> Self {
+    pub fn new(address: &str, root_dir: &str) -> Self {
         Server {
-            address: String::from(address)
+            address: String::from(address),
+            static_handler: StaticFileHandler::new(root_dir),
         }
     }
 
-    pub fn run (&self) -> io::Result<()> {
+    pub fn run(&self) -> io::Result<()> {
         let listener = TcpListener::bind(&self.address)?;
 
         println!("Server listening on {}", self.address);
@@ -35,10 +39,10 @@ impl Server {
             }
         }
 
-        Ok(())    
+        Ok(())
     }
 
-    fn handle_connection(&self, mut stream: TcpStream) -> io::Result<()>{
+    fn handle_connection(&self, mut stream: TcpStream) -> io::Result<()> {
         let peer_addr = stream.peer_addr()?;
 
         println!("Connection established from: {}", peer_addr);
@@ -58,14 +62,18 @@ impl Server {
 
         println!("Received {:?} request for {}", request.method, request.path);
 
-        let response = http::response::Response::new()
-            .with_status(http::StatusCode::Ok)
-            .with_text("Hello From Xener Server!");
+        let response = match request.method {
+            http::Method::GET | http::Method::HEAD => self.static_handler.serve(&request.path),
+            _ => http::response::Response::new()
+                .with_status(http::StatusCode::MethodNotAllowed)
+                .with_header("Allow", "GET, HEAD")
+                .with_text("405 Method Not Allowed"),
+        };
 
         response.write_to(&mut stream)?;
 
         println!("Response sent to {}", peer_addr);
 
         Ok(())
-    } 
+    }
 }

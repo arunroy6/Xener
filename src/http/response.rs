@@ -3,7 +3,6 @@ use std::io::{Write, Result};
 
 use super::{StatusCode, Version};
 
-
 pub struct Response {
     pub version: Version,
     pub status: StatusCode,

@@ -54,12 +54,12 @@ impl Into<String> for Version {
         match self {
             Version::HTTP1_1 => "HTTP/1.1".to_string(),
             Version::HTTP2_0 => "HTTP/2.0".to_string(),
-            _ => "HTTP/1.1".to_string()
+            _ => "HTTP/1.1".to_string(),
         }
     }
 }
 
-#[derive(Copy, Clone)]
+#[derive(Copy, Clone, Debug, PartialEq)]
 pub enum StatusCode {
     Ok = 200,
     Created = 201,
