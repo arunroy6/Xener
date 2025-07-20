@@ -7,12 +7,12 @@ mod tests {
     use std::{fs, thread};
     use tempfile::tempdir;
 
-    fn start_test_server(address: &str, root_dir: PathBuf) -> thread::JoinHandle<()> {
-        let server_address = address.to_string();
+    fn start_test_server(ip: &str, port: u16, root_dir: PathBuf) -> thread::JoinHandle<()> {
         let root_dir = root_dir.to_string_lossy().to_string();
+        let server_config = ServerConfig::with_params(ip, port, &root_dir);
 
         let handle = thread::spawn(move || {
-            let server = Server::new(&server_address, &root_dir);
+            let server = Server::new(&server_config);
             let _ = server.run();
         });
 
@@ -22,14 +22,14 @@ mod tests {
 
     #[test]
     fn test_server_responds_to_request() {
-        let address = "127.0.0.1:8080";
         let temp_dir = tempdir().unwrap();
         let index_file = temp_dir.path().join("index.html");
         fs::write(&index_file, "Hello From Xener Server!").expect("Failed to write index file");
 
-        let server_handle = start_test_server(address, temp_dir.path().to_path_buf());
+        let _ = start_test_server("127.0.0.1", 8080, temp_dir.path().to_path_buf());
 
-        let mut stream = TcpStream::connect(address).expect("Failed to connect to test server");
+        let mut stream =
+            TcpStream::connect("127.0.0.1:8080").expect("Failed to connect to test server");
 
         let request = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
         stream
@@ -60,7 +60,7 @@ mod tests {
     #[test]
     fn test_server_handles_invalid_request() {
         let address = "127.0.0.1:8081";
-        let server_handle = start_test_server(address, tempdir().unwrap().path().to_path_buf());
+        let _ = start_test_server("127.0.0.1", 8081, tempdir().unwrap().path().to_path_buf());
 
         let mut stream = TcpStream::connect(address).expect("Failed to connect to test server");
 

@@ -2,22 +2,24 @@ use std::fs::File;
 use std::io::{Read, Result};
 use std::path::{Path, PathBuf};
 
+use crate::config::ServerConfig;
 use crate::http::{StatusCode, response::Response};
 
 pub struct StaticFileHandler {
     root_dir: PathBuf,
+    default_index: String,
 }
 
 impl StaticFileHandler {
-    pub fn new<P: AsRef<Path>>(root_dir: P) -> Self {
+    pub fn new(config: &ServerConfig) -> Self {
         StaticFileHandler {
-            root_dir: PathBuf::from(root_dir.as_ref()),
+            root_dir: PathBuf::from(&config.doc_root),
+            default_index: config.default_index.clone(),
         }
     }
 
     pub fn serve(&self, path: &str) -> Response {
         let normalized_path = self.normalize_path(path);
-
         let file_path = self.root_dir.join(normalized_path);
 
         match self.read_file(&file_path) {
@@ -38,7 +40,7 @@ impl StaticFileHandler {
         let path = path.trim_start_matches('/');
 
         if path.is_empty() {
-            return "index.html".to_string();
+            return self.default_index.clone();
         }
 
         let path = Path::new(path);
@@ -52,7 +54,7 @@ impl StaticFileHandler {
         }
 
         if normalized.to_string_lossy().ends_with('/') || normalized.to_string_lossy().is_empty() {
-            normalized.push("index.html");
+            normalized.push(self.default_index.clone());
         }
 
         normalized.to_string_lossy().to_string()
@@ -90,11 +92,10 @@ impl StaticFileHandler {
 mod tests {
     use std::{fs, path::PathBuf};
 
-    use crate::http::StatusCode;
-
     use super::StaticFileHandler;
+    use crate::{config::ServerConfig, http::StatusCode};
 
-    fn create_file(path: Option<PathBuf>, file_name: &str, file_content: &str) -> PathBuf {
+    fn setup(path: Option<PathBuf>, file_name: &str, file_content: &str) -> PathBuf {
         let temp_dir = tempfile::tempdir().unwrap().path().to_path_buf();
 
         let dir_path = if let Some(p) = path {
@@ -110,9 +111,11 @@ mod tests {
 
     #[test]
     fn test_serve_file() {
-        let root_path = create_file(None, "foo.txt", "Hello World!");
+        let root_path = setup(None, "foo.txt", "Hello World!");
+        let server_config =
+            ServerConfig::with_params("127.0.0.1", 8080, &root_path.to_string_lossy().to_string());
 
-        let handler = StaticFileHandler::new(root_path);
+        let handler = StaticFileHandler::new(&server_config);
         let response = handler.serve("foo.txt");
 
         assert_eq!(response.status, StatusCode::Ok, "unable to serve file");
@@ -126,9 +129,10 @@ mod tests {
 
     #[test]
     fn test_serve_default_file_for_path() {
-        let root_path = create_file(None, "index.html", "<html>hello world!</html>");
-
-        let handler = StaticFileHandler::new(root_path);
+        let root_path = setup(None, "index.html", "<html>hello world!</html>");
+        let server_config =
+            ServerConfig::with_params("127.0.0.1", 8080, &root_path.to_string_lossy().to_string());
+        let handler = StaticFileHandler::new(&server_config);
         let response = handler.serve("/");
 
         assert_eq!(response.status, StatusCode::Ok, "unable to serve file");
@@ -145,10 +149,15 @@ mod tests {
 
     #[test]
     fn test_prevent_directory_traversal() {
-        let root_path = create_file(
+        let root_path = setup(
             Some(PathBuf::new().join("public")),
             "file.txt",
             "public file!",
+        );
+        let server_config = ServerConfig::with_params(
+            "127.0.0.1",
+            8080,
+            &root_path.join("public").to_string_lossy().to_string(),
         );
 
         let secured_dir = root_path.join("secured");
@@ -156,7 +165,7 @@ mod tests {
         let secured_file = secured_dir.join("file.txt");
         fs::write(secured_file, "secured content").unwrap();
 
-        let handler = StaticFileHandler::new(root_path.join("public"));
+        let handler = StaticFileHandler::new(&server_config);
         let response = handler.serve("/../secured/file.txt");
 
         assert_eq!(

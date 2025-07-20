@@ -6,6 +6,7 @@ use self::static_handler::StaticFileHandler;
 use std::io::{self};
 use std::net::{TcpListener, TcpStream};
 
+use crate::config::ServerConfig;
 use crate::http;
 
 pub struct Server {
@@ -14,10 +15,10 @@ pub struct Server {
 }
 
 impl Server {
-    pub fn new(address: &str, root_dir: &str) -> Self {
+    pub fn new(config: &ServerConfig) -> Self {
         Server {
-            address: String::from(address),
-            static_handler: StaticFileHandler::new(root_dir),
+            address: config.address(),
+            static_handler: StaticFileHandler::new(config),
         }
     }
 

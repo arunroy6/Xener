@@ -1,17 +1,35 @@
 #![allow(dead_code)]
-#![allow(unused_variables)]
 
+use std::process;
 
-mod server;
+use config::ServerConfig;
+
+mod config;
 mod http;
+mod server;
 
 fn main() {
-    let server = server::Server::new("127.0.0.1:8080", "");
+    println!("Starting Xener Server...");
+
+    let config = match ServerConfig::load() {
+        Ok(config) => config,
+        Err(e) => {
+            eprintln!("Failed to load configuration: {}", e);
+            eprintln!("Using default configuration");
+            ServerConfig::default()
+        }
+    };
+
+    println!("Server configured to listen on {}", config.address());
+    println!("Serving files from {}", config.doc_root);
+
+    let server = server::Server::new(&config);
 
     match server.run() {
         Ok(_) => println!("Server shutdown successfully"),
-        Err(e) => eprintln!("Server error: {}", e), 
+        Err(e) => {
+            eprintln!("Server error: {}", e);
+            process::exit(1);
+        }
     }
 }
-
-
