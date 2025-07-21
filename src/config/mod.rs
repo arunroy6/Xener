@@ -19,6 +19,20 @@ pub struct ServerConfig {
 
     /// Default file to serve for directory requests
     pub default_index: String,
+
+    /// Enable error log
+    pub error_log: bool,
+
+    /// Error log file path
+    /// if empty, log to stderr
+    pub error_log_path: String,
+
+    /// Enable access log
+    pub access_log: bool,
+
+    /// Access log file path
+    /// if empty, log of stdout
+    pub access_log_path: String,
 }
 
 impl Default for ServerConfig {
@@ -28,6 +42,10 @@ impl Default for ServerConfig {
             port: 8080,
             doc_root: String::from("./static"),
             default_index: String::from("index.html"),
+            error_log: true,
+            error_log_path: String::new(),
+            access_log: true,
+            access_log_path: String::new(),
         }
     }
 }
@@ -90,6 +108,25 @@ impl ServerConfig {
         if !doc_root.exists() {
             fs::create_dir_all(&doc_root)?;
         }
+
+        if !self.access_log_path.is_empty() {
+            let path = PathBuf::from(&self.access_log_path);
+            if let Some(parent) = path.parent() {
+                if !parent.exists() {
+                    fs::create_dir_all(parent)?;
+                }
+            }
+        }
+
+        if !self.error_log_path.is_empty() {
+            let path = PathBuf::from(&self.error_log_path);
+            if let Some(parent) = path.parent() {
+                if !parent.exists() {
+                    fs::create_dir_all(parent)?;
+                }
+            }
+        }
+
         self.doc_root = doc_root.to_string_lossy().to_string();
         Ok(())
     }
@@ -112,35 +149,7 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "Run this test individually as this affect other tests when ran concurrently."]
-    fn test_environment_variables() {
-        unsafe { env::set_var("XENER__IP", "127.0.0.2") };
-        unsafe { env::set_var("XENER__PORT", "8085") };
-        unsafe { env::set_var("XENER__DOC_ROOT", "./assets") };
-        unsafe { env::set_var("XENER__DEFAULT_INDEX", "index.htm") };
-
-        let config = ServerConfig::load().unwrap();
-
-        assert_eq!(config.ip, "127.0.0.2");
-        assert_eq!(config.port, 8085);
-        assert_eq!(
-            config.doc_root,
-            env::current_dir()
-                .unwrap()
-                .join("./assets")
-                .to_string_lossy()
-                .to_string()
-        );
-        assert_eq!(config.default_index, "index.htm");
-
-        unsafe { env::remove_var("XENER__IP") };
-        unsafe { env::remove_var("XENER__PORT") };
-        unsafe { env::remove_var("XENER__DOC_ROOT") };
-        unsafe { env::remove_var("XENER__DEFAULT_INDEX") };
-    }
-
-    #[test]
-    fn test_load_from_file() {
+    fn test_load_from_file_override_with_env() {
         let temp_dir = TempDir::new().unwrap();
 
         let config_content = r#"
@@ -148,6 +157,10 @@ mod tests {
             port: 9090
             doc_root: "/var/www/xener"
             default_index: "index.htm"
+            error_log: false
+            error_log_path: "./xener/logs/error.log"
+            access_log: false
+            access_log_path: "./xener/logs/access.log"
             "#;
 
         let config_path = temp_dir.path().join("config.yaml");
@@ -158,7 +171,20 @@ mod tests {
 
         let config = ServerConfig::load().unwrap();
         assert_eq!(config.ip, "192.168.1.1");
+        assert_eq!(config.port, 9090);
+        assert_eq!(config.doc_root, "/var/www/xener");
+        assert_eq!(config.default_index, "index.htm");
+        assert_eq!(config.error_log, false);
+        assert_eq!(config.error_log_path, "./xener/logs/error.log");
+        assert_eq!(config.error_log, false);
+        assert_eq!(config.access_log_path, "./xener/logs/access.log");
 
+        unsafe {
+            env::set_var("XENER__DEFAULT_INDEX", "default.html");
+            let config = ServerConfig::load().unwrap();
+            assert_eq!(config.default_index, "default.html");
+            env::remove_var("XENER__DEFAULT_INDEX");
+        }
         env::set_current_dir(original_dir).unwrap();
     }
 }

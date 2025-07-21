@@ -103,7 +103,7 @@ impl StatusCode {
             Self::BadRequest => "Bad Request",
             Self::Unauthorized => "Unauthorized",
             Self::Forbidden => "Forbidden",
-            Self::NotFound => "NotFound",
+            Self::NotFound => "Not Found",
             Self::MethodNotAllowed => "Method Not Allowed",
             Self::ContentTooLarge => "Content Too Large",
             Self::UriTooLong => "URI Too Long",
