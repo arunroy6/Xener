@@ -2,16 +2,21 @@ mod static_handler;
 #[cfg(test)]
 mod tests;
 
-use self::static_handler::StaticFileHandler;
 use std::io::{self};
 use std::net::{TcpListener, TcpStream};
+use std::path::PathBuf;
+use tracing::{debug, error, info};
 
+use self::static_handler::StaticFileHandler;
 use crate::config::ServerConfig;
+use crate::error::ServerError;
 use crate::http;
+use crate::logging::AccessLogger;
 
 pub struct Server {
     address: String,
     static_handler: StaticFileHandler,
+    access_logger: AccessLogger,
 }
 
 impl Server {
@@ -19,23 +24,27 @@ impl Server {
         Server {
             address: config.address(),
             static_handler: StaticFileHandler::new(config),
+            access_logger: AccessLogger::new(
+                config.access_log,
+                Some(PathBuf::from(&config.access_log_path)),
+            ),
         }
     }
 
     pub fn run(&self) -> io::Result<()> {
         let listener = TcpListener::bind(&self.address)?;
 
-        println!("Server listening on {}", self.address);
+        info!("Server listening on {}", self.address);
 
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
                     if let Err(e) = self.handle_connection(stream) {
-                        eprintln!("Error handling connection: {}", e);
+                        error!("Error handling connection: {}", e);
                     }
                 }
                 Err(e) => {
-                    eprintln!("Connection error: {}", e);
+                    error!("Connection error: {}", e);
                 }
             }
         }
@@ -43,37 +52,54 @@ impl Server {
         Ok(())
     }
 
-    fn handle_connection(&self, mut stream: TcpStream) -> io::Result<()> {
-        let peer_addr = stream.peer_addr()?;
+    fn handle_connection(&self, mut stream: TcpStream) -> Result<(), ServerError> {
+        let peer_addr = stream.peer_addr().map_err(|e| ServerError::Io(e))?;
 
-        println!("Connection established from: {}", peer_addr);
+        debug!("Connection established from: {:?}", peer_addr);
         let request = match http::request::Request::from_stream(&mut stream) {
             Ok(req) => req,
             Err(e) => {
-                eprintln!("Error parsing request: {}", e);
+                error!("Error parsing request: {}", e);
 
+                let response_text = http::StatusCode::BadRequest.status_text();
                 let response = http::response::Response::new()
                     .with_status(http::StatusCode::BadRequest)
-                    .with_text(http::StatusCode::BadRequest.reason_phrase());
+                    .with_text(&response_text);
 
+                self.access_logger.log(
+                    &peer_addr.to_string(),
+                    "INVALID",
+                    "",
+                    response.status.code(),
+                    response_text.len(),
+                );
                 response.write_to(&mut stream)?;
-                return Ok(());
+
+                return Err(ServerError::HttpParse(e.to_string()));
             }
         };
 
-        println!("Received {:?} request for {}", request.method, request.path);
+        debug!("Received {} request for {}", request.method, request.path);
 
         let response = match request.method {
             http::Method::GET | http::Method::HEAD => self.static_handler.serve(&request.path),
             _ => http::response::Response::new()
                 .with_status(http::StatusCode::MethodNotAllowed)
                 .with_header("Allow", "GET, HEAD")
-                .with_text("405 Method Not Allowed"),
+                .with_text(&http::StatusCode::MethodNotAllowed.status_text()),
         };
+
+        self.access_logger.log(
+            &peer_addr.to_string(),
+            &request.method.to_string(),
+            &request.path,
+            response.status.code(),
+            response.body.len(),
+        );
 
         response.write_to(&mut stream)?;
 
-        println!("Response sent to {}", peer_addr);
+        debug!("Response sent to {:?}", peer_addr);
 
         Ok(())
     }

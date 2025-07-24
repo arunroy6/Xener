@@ -1,7 +1,9 @@
+use strum_macros::Display;
+
 pub mod request;
 pub mod response;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Display, PartialEq)]
 pub enum Method {
     GET,
     POST,
@@ -74,6 +76,7 @@ pub enum StatusCode {
     Forbidden = 403,
     NotFound = 404,
     MethodNotAllowed = 405,
+    RequestTimeout = 408,
     ContentTooLarge = 413,
     UriTooLong = 414,
     TooManyRequests = 429,
@@ -105,6 +108,7 @@ impl StatusCode {
             Self::Forbidden => "Forbidden",
             Self::NotFound => "Not Found",
             Self::MethodNotAllowed => "Method Not Allowed",
+            Self::RequestTimeout => "Request Timeout",
             Self::ContentTooLarge => "Content Too Large",
             Self::UriTooLong => "URI Too Long",
             Self::TooManyRequests => "Too Many Requests",
@@ -115,5 +119,9 @@ impl StatusCode {
             Self::ServiceUnavailable => "Service Unavailable",
             Self::GatewayTimeout => "Gateway Timeout",
         }
+    }
+
+    pub fn status_text(&self) -> String {
+        format!("{} {}", self.code(), self.reason_phrase())
     }
 }

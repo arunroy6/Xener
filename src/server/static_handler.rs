@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{Read, Result};
 use std::path::{Path, PathBuf};
+use tracing::error;
 
 use crate::config::ServerConfig;
 use crate::http::{StatusCode, response::Response};
@@ -28,10 +29,10 @@ impl StaticFileHandler {
                 .with_content_type(&content_type)
                 .with_body(content),
             Err(e) => {
-                println!("Error Serving file: {}", e);
+                error!("Error Serving file: {}", e);
                 Response::new()
                     .with_status(StatusCode::NotFound)
-                    .with_text("404 Not Found")
+                    .with_text(&StatusCode::NotFound.status_text())
             }
         }
     }

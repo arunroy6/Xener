@@ -1,13 +1,17 @@
 
 [package]
 name = "xener"
-version = "0.1.0"
+version = "0.0.4"
 edition = "2024"
 
 [dependencies]
 config = { version = "0.15.13" }
 serde = { version = "1.0.219", features = ["derive"] }
-
+serde_yml = "0.0.12"
+chrono = "0.4.41"
+strum_macros = "0.27.2"
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3.19", features = ["env-filter", "json"] }
 
 [dev-dependencies]
 tempfile = "3.20.0"

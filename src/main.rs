@@ -3,32 +3,40 @@
 use std::process;
 
 use config::ServerConfig;
+use tracing::{error, info};
 
 mod config;
+mod error;
 mod http;
+mod logging;
 mod server;
 
 fn main() {
-    println!("Starting Xener Server...");
+    if let Err(e) = logging::init_logger() {
+        eprintln!("Failed to initialize logger: {}", e);
+        process::exit(1)
+    }
+
+    info!("Starting Xener Server...");
 
     let config = match ServerConfig::load() {
         Ok(config) => config,
         Err(e) => {
-            eprintln!("Failed to load configuration: {}", e);
-            eprintln!("Using default configuration");
+            error!("Failed to load configuration: {}", e);
+            error!("Using default configuration");
             ServerConfig::default()
         }
     };
 
-    println!("Server configured to listen on {}", config.address());
-    println!("Serving files from {}", config.doc_root);
+    info!("Server configured to listen on {}", config.address());
+    info!("Serving files from {}", config.doc_root);
 
     let server = server::Server::new(&config);
 
     match server.run() {
-        Ok(_) => println!("Server shutdown successfully"),
+        Ok(_) => info!("Server shutdown successfully"),
         Err(e) => {
-            eprintln!("Server error: {}", e);
+            error!("Server error: {}", e);
             process::exit(1);
         }
     }

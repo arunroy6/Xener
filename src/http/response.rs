@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::io::{Write, Result};
+use std::io::{Result, Write};
 
 use super::{StatusCode, Version};
 
@@ -7,7 +7,7 @@ pub struct Response {
     pub version: Version,
     pub status: StatusCode,
     pub headers: HashMap<String, String>,
-    pub body: Vec<u8>
+    pub body: Vec<u8>,
 }
 
 impl Response {
@@ -20,7 +20,7 @@ impl Response {
             version: Version::HTTP1_1,
             status: StatusCode::Ok,
             headers,
-            body: Vec::new()
+            body: Vec::new(),
         }
     }
 
@@ -35,10 +35,8 @@ impl Response {
     }
 
     pub fn with_body(mut self, body: Vec<u8>) -> Self {
-        self.headers.insert(
-            String::from("Content-Length"),
-            body.len().to_string()
-        );
+        self.headers
+            .insert(String::from("Content-Length"), body.len().to_string());
         self.body = body;
         self
     }
@@ -48,7 +46,8 @@ impl Response {
     }
 
     pub fn with_content_type(mut self, content_type: &str) -> Self {
-        self.headers.insert(String::from("Content-Type"), content_type.to_string());
+        self.headers
+            .insert(String::from("Content-Type"), content_type.to_string());
         self
     }
 
@@ -78,8 +77,8 @@ impl Response {
 
 #[cfg(test)]
 mod tests {
-    use crate::http::response::Response;
     use crate::http::StatusCode;
+    use crate::http::response::Response;
 
     #[test]
     fn test_response_write_to() {
@@ -92,7 +91,7 @@ mod tests {
         let mut buf = Vec::new();
         response.write_to(&mut buf).unwrap();
         let result = String::from_utf8_lossy(&buf);
-        
+
         assert!(result.starts_with("HTTP/1.1 200 OK"));
         assert!(result.contains("Content-Type: text/plain"));
         assert!(result.contains("Content-Length: 6"));
