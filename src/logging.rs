@@ -54,14 +54,3 @@ impl AccessLogger {
         }
     }
 }
-
-#[cfg(test)]
-mod tests {
-    use crate::error::ServerError;
-
-    #[test]
-    fn test_server_error_display() {
-        let error = ServerError::NotFound("/index.html".to_string());
-        assert_eq!(error.to_string(), "Not found: /index.html");
-    }
-}

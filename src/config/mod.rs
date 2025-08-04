@@ -14,6 +14,12 @@ pub struct ServerConfig {
     /// Port to listen to
     pub port: u16,
 
+    /// Max number of concurrent connections
+    pub max_connections: Option<usize>,
+
+    /// Number of worker threads in the threads pool
+    pub thread_count: Option<usize>,
+
     /// Document root for static files
     pub doc_root: String,
 
@@ -40,6 +46,8 @@ impl Default for ServerConfig {
         Self {
             ip: String::from("127.0.0.1"),
             port: 8080,
+            max_connections: Some(100),
+            thread_count: None,
             doc_root: String::from("./static"),
             default_index: String::from("index.html"),
             error_log: true,
@@ -89,10 +97,11 @@ impl ServerConfig {
         Ok(server_config)
     }
 
-    pub fn with_params(ip: &str, port: u16, doc_root: &str) -> Self {
+    pub fn with_params(ip: &str, port: u16, max_connections: usize, doc_root: &str) -> Self {
         let mut config = Self::default();
         config.ip = String::from(ip);
         config.port = port;
+        config.max_connections = Some(max_connections);
         config.doc_root = String::from(doc_root);
         config
     }
@@ -155,6 +164,7 @@ mod tests {
         let config_content = r#"
             ip: "192.168.1.1"
             port: 9090
+            max_connections: 11
             doc_root: "/var/www/xener"
             default_index: "index.htm"
             error_log: false
@@ -172,6 +182,7 @@ mod tests {
         let config = ServerConfig::load().unwrap();
         assert_eq!(config.ip, "192.168.1.1");
         assert_eq!(config.port, 9090);
+        assert_eq!(config.max_connections, Some(11));
         assert_eq!(config.doc_root, "/var/www/xener");
         assert_eq!(config.default_index, "index.htm");
         assert_eq!(config.error_log, false);

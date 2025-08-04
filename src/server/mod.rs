@@ -1,47 +1,103 @@
-mod static_handler;
 #[cfg(test)]
 mod tests;
 
-use std::io::{self};
+mod static_handler;
+mod thread_pool;
+
+use std::io;
 use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
-use tracing::{debug, error, info};
+use std::sync::{Arc, Mutex};
+use thread_pool::ThreadPool;
+use tracing::{debug, error, info, warn};
 
-use self::static_handler::StaticFileHandler;
 use crate::config::ServerConfig;
 use crate::error::ServerError;
 use crate::http;
 use crate::logging::AccessLogger;
+use static_handler::StaticFileHandler;
 
 pub struct Server {
     address: String,
-    static_handler: StaticFileHandler,
-    access_logger: AccessLogger,
+    static_handler: Arc<StaticFileHandler>,
+    access_logger: Arc<AccessLogger>,
+    max_connections: usize,
+    thread_count: usize,
 }
 
 impl Server {
     pub fn new(config: &ServerConfig) -> Self {
+        let max_connections = config.max_connections.unwrap_or(100);
+        let thread_count = config.thread_count.unwrap_or_else(|| {
+            let cpu_count = num_cpus::get();
+            cpu_count * 2
+        });
         Server {
             address: config.address(),
-            static_handler: StaticFileHandler::new(config),
-            access_logger: AccessLogger::new(
+            static_handler: Arc::new(StaticFileHandler::new(config)),
+            access_logger: Arc::new(AccessLogger::new(
                 config.access_log,
                 Some(PathBuf::from(&config.access_log_path)),
-            ),
+            )),
+            max_connections,
+            thread_count,
         }
     }
 
     pub fn run(&self) -> io::Result<()> {
         let listener = TcpListener::bind(&self.address)?;
 
-        info!("Server listening on {}", self.address);
+        let connections_count = Arc::new(Mutex::new(0));
+
+        let pool = ThreadPool::new(self.thread_count);
+
+        info!(
+            "Server listening on {} with {} worker threads and max {} concurrent connections",
+            self.address,
+            pool.size(),
+            self.max_connections
+        );
 
         for stream in listener.incoming() {
             match stream {
                 Ok(stream) => {
-                    if let Err(e) = self.handle_connection(stream) {
-                        error!("Error handling connection: {}", e);
+                    let mut count = connections_count.lock().unwrap();
+                    if *count >= self.max_connections {
+                        // we've reached the maximum number of connections
+                        // Reject this connection with a 503 Service unavailable response
+                        error!(
+                            "Maximum connection limit reached ({}), rejecting connection",
+                            self.max_connections
+                        );
+
+                        let response = http::response::Response::new()
+                            .with_status(http::StatusCode::ServiceUnavailable)
+                            .with_text("503 Service Unavailable - Server at capacity");
+
+                        let _ = response.write_to(&mut TcpStream::from(stream));
+                        continue;
                     }
+                    *count += 1;
+                    debug!("New connection accepted, Active Connection: {}", *count);
+
+                    let static_handler = Arc::clone(&self.static_handler);
+                    let access_logger = Arc::clone(&self.access_logger);
+                    let connection_count = Arc::clone(&connections_count);
+
+                    pool.execute(move || {
+                        debug!("Handling connection in thread pool worker");
+
+                        if let Err(e) =
+                            Self::handle_connection(stream, &static_handler, &access_logger)
+                        {
+                            warn!("Error handling connection: {}", e);
+                        }
+
+                        let mut count = connection_count.lock().unwrap();
+                        *count -= 1;
+
+                        debug!("Connection handled, action connections: {}", *count);
+                    });
                 }
                 Err(e) => {
                     error!("Connection error: {}", e);
@@ -52,7 +108,14 @@ impl Server {
         Ok(())
     }
 
-    fn handle_connection(&self, mut stream: TcpStream) -> Result<(), ServerError> {
+    fn handle_connection(
+        mut stream: TcpStream,
+        static_handler: &StaticFileHandler,
+        access_logger: &AccessLogger,
+    ) -> Result<(), ServerError> {
+        stream.set_read_timeout(Some(std::time::Duration::from_secs(30)))?;
+        stream.set_write_timeout(Some(std::time::Duration::from_secs(30)))?;
+
         let peer_addr = stream.peer_addr().map_err(|e| ServerError::Io(e))?;
 
         debug!("Connection established from: {:?}", peer_addr);
@@ -66,7 +129,9 @@ impl Server {
                     .with_status(http::StatusCode::BadRequest)
                     .with_text(&response_text);
 
-                self.access_logger.log(
+                response.write_to(&mut stream)?;
+
+                access_logger.log(
                     &peer_addr.to_string(),
                     "INVALID",
                     "",
@@ -82,14 +147,14 @@ impl Server {
         debug!("Received {} request for {}", request.method, request.path);
 
         let response = match request.method {
-            http::Method::GET | http::Method::HEAD => self.static_handler.serve(&request.path),
+            http::Method::GET | http::Method::HEAD => static_handler.serve(&request.path),
             _ => http::response::Response::new()
                 .with_status(http::StatusCode::MethodNotAllowed)
                 .with_header("Allow", "GET, HEAD")
                 .with_text(&http::StatusCode::MethodNotAllowed.status_text()),
         };
 
-        self.access_logger.log(
+        access_logger.log(
             &peer_addr.to_string(),
             &request.method.to_string(),
             &request.path,

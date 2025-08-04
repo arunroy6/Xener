@@ -3,13 +3,14 @@ mod tests {
     use super::super::*;
     use std::io::{Read, Write};
     use std::path::PathBuf;
+    use std::sync::Barrier;
     use std::time::Duration;
     use std::{fs, thread};
     use tempfile::tempdir;
 
     fn start_test_server(ip: &str, port: u16, root_dir: PathBuf) -> thread::JoinHandle<()> {
         let root_dir = root_dir.to_string_lossy().to_string();
-        let server_config = ServerConfig::with_params(ip, port, &root_dir);
+        let server_config = ServerConfig::with_params(ip, port, 1, &root_dir);
 
         let handle = thread::spawn(move || {
             let server = Server::new(&server_config);
@@ -73,5 +74,40 @@ mod tests {
         let bytes_read = stream.read(&mut buffer).expect("Failed to read response");
 
         assert!(bytes_read > 0, "Server should send some response");
+    }
+
+    #[test]
+    fn test_concurrent_connections() {
+        let _ = start_test_server("127.0.0.1", 8082, tempdir().unwrap().path().to_path_buf());
+
+        let client_count = 5;
+        let barrier = Arc::new(Barrier::new(client_count));
+        let mut handles = Vec::with_capacity(client_count);
+
+        for i in 0..client_count {
+            let barrier_clone = Arc::clone(&barrier);
+
+            let handle = thread::spawn(move || {
+                barrier_clone.wait();
+                let mut stream = TcpStream::connect("127.0.0.1:8082").unwrap();
+
+                let request = format!("GET /client{} HTTP/1.1\r\nHost: localhost\r\n\r\n", i);
+                stream.write_all(request.as_bytes()).unwrap();
+
+                let mut buffer = [0; 1024];
+                let bytes_read = stream.read(&mut buffer).unwrap();
+                let response = String::from_utf8_lossy(&buffer[0..bytes_read]);
+
+                assert!(
+                    response.contains("HTTP/1.1"),
+                    "Server should send some response"
+                );
+            });
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
     }
 }

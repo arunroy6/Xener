@@ -113,8 +113,12 @@ mod tests {
     #[test]
     fn test_serve_file() {
         let root_path = setup(None, "foo.txt", "Hello World!");
-        let server_config =
-            ServerConfig::with_params("127.0.0.1", 8080, &root_path.to_string_lossy().to_string());
+        let server_config = ServerConfig::with_params(
+            "127.0.0.1",
+            8080,
+            1,
+            &root_path.to_string_lossy().to_string(),
+        );
 
         let handler = StaticFileHandler::new(&server_config);
         let response = handler.serve("foo.txt");
@@ -131,8 +135,12 @@ mod tests {
     #[test]
     fn test_serve_default_file_for_path() {
         let root_path = setup(None, "index.html", "<html>hello world!</html>");
-        let server_config =
-            ServerConfig::with_params("127.0.0.1", 8080, &root_path.to_string_lossy().to_string());
+        let server_config = ServerConfig::with_params(
+            "127.0.0.1",
+            8080,
+            1,
+            &root_path.to_string_lossy().to_string(),
+        );
         let handler = StaticFileHandler::new(&server_config);
         let response = handler.serve("/");
 
@@ -158,6 +166,7 @@ mod tests {
         let server_config = ServerConfig::with_params(
             "127.0.0.1",
             8080,
+            1,
             &root_path.join("public").to_string_lossy().to_string(),
         );
 
