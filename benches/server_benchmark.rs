@@ -1,6 +1,6 @@
 use criterion::{Criterion, criterion_group, criterion_main};
 use std::hint::black_box;
-use std::io::{Read, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
 use std::sync::{Arc, Barrier};
 use std::thread;
@@ -23,15 +23,28 @@ fn benchmark_concurrent_requests(c: &mut Criterion) {
                     barrier_clone.wait();
 
                     let start = Instant::now();
+                    let mut stream = TcpStream::connect("127.0.0.1:8080").unwrap();
+                    stream
+                        .set_read_timeout(Some(Duration::from_secs(30)))
+                        .unwrap();
+                    stream
+                        .set_write_timeout(Some(Duration::from_secs(30)))
+                        .unwrap();
 
-                    for _ in 0..requests_per_client {
-                        let mut stream = TcpStream::connect("127.0.0.1:8080").unwrap();
+                    for i in 0..requests_per_client {
+                        let request = if i == requests_per_client - 1 {
+                            "GET / HTTP/1.1\r\nHost: localhost\r\n Connection: close\r\n\r\n"
+                        } else {
+                            "GET / HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n"
+                        };
 
-                        let request = "GET / HTTP/1.1\r\nHost: localhost\r\n\r\n";
-                        stream.write_all(request.as_bytes()).unwrap();
+                        if stream.write_all(request.as_bytes()).is_err() {
+                            break;
+                        }
 
-                        let mut buffer = [0; 1024];
-                        let _ = stream.read(&mut buffer).unwrap();
+                        if read_http_response(&mut stream).is_err() {
+                            break;
+                        }
                     }
 
                     start.elapsed()
@@ -48,6 +61,56 @@ fn benchmark_concurrent_requests(c: &mut Criterion) {
             black_box(total_duration / num_clients as u32)
         })
     });
+}
+
+fn read_http_response(stream: &mut TcpStream) -> Result<(), Box<dyn std::error::Error>> {
+    let mut reader = BufReader::new(stream);
+
+    let mut status_line = String::new();
+    reader.read_line(&mut status_line)?;
+
+    let mut content_length = 0;
+    let mut chunked = false;
+
+    loop {
+        let mut header = String::new();
+        reader.read_line(&mut header)?;
+
+        if header.trim().is_empty() {
+            break; // End of headers
+        }
+
+        if header.to_lowercase().starts_with("content-length:") {
+            content_length = header
+                .split(':')
+                .nth(1)
+                .unwrap_or("0")
+                .trim()
+                .parse::<usize>()
+                .unwrap_or(0);
+        }
+
+        if header.to_lowercase().starts_with("transfer-encoding:")
+            && header.to_lowercase().contains("chunked")
+        {
+            chunked = true;
+        }
+    }
+
+    if chunked {
+        let mut buffer = vec![0u8; 1024];
+        loop {
+            let bytes_read = reader.read(&mut buffer)?;
+            if bytes_read == 0 {
+                break;
+            }
+        }
+    } else if content_length > 0 {
+        let mut body = vec![0u8; content_length];
+        reader.read_exact(&mut body)?;
+    }
+
+    Ok(())
 }
 
 criterion_group!(benches, benchmark_concurrent_requests);

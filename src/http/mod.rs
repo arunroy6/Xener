@@ -36,6 +36,7 @@ impl From<&str> for Method {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Version {
+    HTTP1_0,
     HTTP1_1,
     HTTP2_0,
     UNKNOWN,
@@ -44,6 +45,7 @@ pub enum Version {
 impl From<&str> for Version {
     fn from(s: &str) -> Self {
         match s {
+            "HTTP/1.0" => Version::HTTP1_0,
             "HTTP/1.1" => Version::HTTP1_1,
             "HTTP/2.0" => Version::HTTP2_0,
             _ => Version::UNKNOWN,

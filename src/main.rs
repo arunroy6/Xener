@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use std::process;
+use std::{process, sync::Arc};
 
 use config::ServerConfig;
 use tracing::{error, info};
@@ -31,7 +31,7 @@ fn main() {
     info!("Server configured to listen on {}", config.address());
     info!("Serving files from {}", config.doc_root);
 
-    let server = server::Server::new(&config);
+    let server = server::Server::new(Arc::new(config));
 
     match server.run() {
         Ok(_) => info!("Server shutdown successfully"),

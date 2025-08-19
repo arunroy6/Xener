@@ -1,7 +1,8 @@
 use std::collections::HashMap;
-use std::io::{Result, Write};
+use std::io::Write;
 
 use super::{StatusCode, Version};
+use crate::error::Result;
 
 pub struct Response {
     pub version: Version,
@@ -72,6 +73,44 @@ impl Response {
         writer.flush()?;
 
         Ok(())
+    }
+
+    /// Sets connection persistence headers based on keep-alive preference
+    pub fn with_keep_alive(
+        mut self,
+        keep_alive: bool,
+        timeout: Option<u64>,
+        max_requests: Option<usize>,
+    ) -> Self {
+        let connection_value = if keep_alive { "keep-alive" } else { "close" };
+        self.headers
+            .insert(String::from("Connection"), String::from(connection_value));
+
+        if keep_alive && (timeout.is_some() || max_requests.is_some()) {
+            let mut keep_alive_parts = Vec::new();
+
+            if let Some(seconds) = timeout {
+                keep_alive_parts.push(format!("timeout={}", seconds));
+            }
+
+            if let Some(max) = max_requests {
+                keep_alive_parts.push(format!("max={}", max));
+            }
+
+            if !keep_alive_parts.is_empty() {
+                let keep_alive_value = keep_alive_parts.join(", ");
+                self.headers
+                    .insert(String::from("Keep-Alive"), keep_alive_value);
+            }
+        }
+        self
+    }
+
+    pub fn with_cache_control(mut self, max_age_seconds: u64) -> Self {
+        let cache_value = format!("public, max-age={}", max_age_seconds);
+        self.headers
+            .insert(String::from("Cache-Control"), cache_value);
+        self
     }
 }
 

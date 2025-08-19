@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod tests {
     use super::super::*;
+    use reqwest::blocking::Client;
     use std::io::{Read, Write};
     use std::path::PathBuf;
     use std::sync::Barrier;
@@ -10,10 +11,10 @@ mod tests {
 
     fn start_test_server(ip: &str, port: u16, root_dir: PathBuf) -> thread::JoinHandle<()> {
         let root_dir = root_dir.to_string_lossy().to_string();
-        let server_config = ServerConfig::with_params(ip, port, 1, &root_dir);
+        let server_config = Arc::new(ServerConfig::with_params(ip, port, 1, &root_dir));
 
         let handle = thread::spawn(move || {
-            let server = Server::new(&server_config);
+            let server = Server::new(server_config);
             let _ = server.run();
         });
 
@@ -108,6 +109,41 @@ mod tests {
 
         for handle in handles {
             handle.join().unwrap();
+        }
+    }
+
+    #[test]
+    fn test_keep_alive_connection() {
+        let temp_dir = tempdir().unwrap();
+        let index_file = temp_dir.path().join("index.html");
+        fs::write(&index_file, "Hello From Xener Server!").expect("Failed to write index file");
+
+        let _ = start_test_server("127.0.0.1", 8083, temp_dir.path().to_path_buf());
+
+        let client = Client::builder()
+            .pool_idle_timeout(Duration::from_secs(30))
+            .build()
+            .unwrap();
+
+        for i in 0..5 {
+            let response = client
+                .get(format!("http://{}/index.html", "127.0.0.1:8083"))
+                .header("Connection", "keep-alive")
+                .send()
+                .expect("failed to send request");
+
+            assert!(
+                response.status().is_success(),
+                "Request {} failed with status {}",
+                i,
+                response.status()
+            );
+
+            let headers = response.headers();
+            assert!(
+                headers.contains_key("connection"),
+                "Response missing Connection header"
+            );
         }
     }
 }

@@ -1,6 +1,7 @@
 use super::{Method, Version};
+use crate::error::{Result, ServerError};
 use std::collections::HashMap;
-use std::io::{BufRead, BufReader, Error, Read};
+use std::io::{BufRead, BufReader, Read};
 
 pub struct Request {
     pub method: Method,
@@ -11,16 +12,15 @@ pub struct Request {
 }
 
 impl Request {
-    pub fn from_stream<T: Read>(stream: &mut T) -> Result<Self, Error> {
+    pub fn from_stream<T: Read>(stream: &mut T) -> Result<Self> {
         let mut reader = BufReader::new(stream);
         let mut request_line = String::new();
         reader.read_line(&mut request_line)?;
 
         let parts: Vec<&str> = request_line.trim().split_whitespace().collect();
         if parts.len() < 3 {
-            return Err(std::io::Error::new(
-                std::io::ErrorKind::InvalidData,
-                "Invalid Http request line",
+            return Err(ServerError::HttpParse(
+                "Invalid Http request line".to_string(),
             ));
         }
 
@@ -72,14 +72,67 @@ impl Request {
         }
         None
     }
-}
 
+    pub fn wants_keep_alive(&self) -> bool {
+        match self.version {
+            Version::HTTP1_1 => {
+                if let Some(connection) = self.get_header("connection") {
+                    !connection.to_lowercase().contains("close")
+                } else {
+                    // Default for HTTP/1.1 is Keep-Alive
+                    true
+                }
+            }
+            Version::HTTP1_0 => {
+                if let Some(connection) = self.get_header("connection") {
+                    connection.to_lowercase().contains("keep-alive")
+                } else {
+                    // Default for HTTP/1.0 is to close
+                    false
+                }
+            }
+            _ => false,
+        }
+    }
+
+    pub fn keep_alive_timeout(&self) -> Option<u64> {
+        if let Some(keep_alive) = self.get_header("keep-alive") {
+            if let Some(timeout_part) = keep_alive
+                .split(',')
+                .find(|part| part.trim().starts_with("timeout="))
+            {
+                if let Some(timeout_str) = timeout_part.trim().strip_prefix("timeout=") {
+                    if let Ok(timeout) = timeout_str.parse::<u64>() {
+                        return Some(timeout);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    pub fn keep_alive_max(&self) -> Option<usize> {
+        if let Some(keep_alive) = self.get_header("keep-alive") {
+            if let Some(max_part) = keep_alive
+                .split(',')
+                .find(|part| part.trim().starts_with("max="))
+            {
+                if let Some(max_str) = max_part.trim().strip_prefix("max=") {
+                    if let Ok(max) = max_str.parse::<usize>() {
+                        return Some(max);
+                    }
+                }
+            }
+        }
+        None
+    }
+}
 
 #[cfg(test)]
 mod tests {
     use std::io::Cursor;
 
-    use crate::http::{request::Request, Method, Version};
+    use crate::http::{Method, Version, request::Request};
 
     #[test]
     fn test_request_from_stream_valid() {

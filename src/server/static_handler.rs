@@ -1,6 +1,7 @@
 use std::fs::File;
 use std::io::{Read, Result};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use tracing::error;
 
 use crate::config::ServerConfig;
@@ -12,7 +13,7 @@ pub struct StaticFileHandler {
 }
 
 impl StaticFileHandler {
-    pub fn new(config: &ServerConfig) -> Self {
+    pub fn new(config: Arc<ServerConfig>) -> Self {
         StaticFileHandler {
             root_dir: PathBuf::from(&config.doc_root),
             default_index: config.default_index.clone(),
@@ -91,7 +92,7 @@ impl StaticFileHandler {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::PathBuf};
+    use std::{fs, path::PathBuf, sync::Arc};
 
     use super::StaticFileHandler;
     use crate::{config::ServerConfig, http::StatusCode};
@@ -120,7 +121,7 @@ mod tests {
             &root_path.to_string_lossy().to_string(),
         );
 
-        let handler = StaticFileHandler::new(&server_config);
+        let handler = StaticFileHandler::new(Arc::new(server_config));
         let response = handler.serve("foo.txt");
 
         assert_eq!(response.status, StatusCode::Ok, "unable to serve file");
@@ -141,7 +142,7 @@ mod tests {
             1,
             &root_path.to_string_lossy().to_string(),
         );
-        let handler = StaticFileHandler::new(&server_config);
+        let handler = StaticFileHandler::new(Arc::new(server_config));
         let response = handler.serve("/");
 
         assert_eq!(response.status, StatusCode::Ok, "unable to serve file");
@@ -175,7 +176,7 @@ mod tests {
         let secured_file = secured_dir.join("file.txt");
         fs::write(secured_file, "secured content").unwrap();
 
-        let handler = StaticFileHandler::new(&server_config);
+        let handler = StaticFileHandler::new(Arc::new(server_config));
         let response = handler.serve("/../secured/file.txt");
 
         assert_eq!(

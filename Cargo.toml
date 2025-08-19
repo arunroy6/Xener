@@ -6,7 +6,7 @@ edition = "2024"
 
 [dependencies]
 chrono = "0.4.41"
-config = { version = "0.15.13" }
+config = { version = "0.15.14" }
 num_cpus = "1.17.0"
 serde = { version = "1.0.219", features = ["derive"] }
 serde_yml = "0.0.12"
@@ -15,6 +15,7 @@ tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "json"] }
 
 [dev-dependencies]
+reqwest = { version = "0.12.23", features = ["blocking"] }
 tempfile = "3.20.0"
 criterion = "0.7.0"
 

@@ -39,6 +39,11 @@ pub struct ServerConfig {
     /// Access log file path
     /// if empty, log of stdout
     pub access_log_path: String,
+
+    pub keep_alive_timeout: Option<u64>,
+    pub read_timeout: Option<u64>,
+    pub write_timeout: Option<u64>,
+    pub max_requests_per_connection: Option<usize>,
 }
 
 impl Default for ServerConfig {
@@ -54,6 +59,10 @@ impl Default for ServerConfig {
             error_log_path: String::new(),
             access_log: true,
             access_log_path: String::new(),
+            keep_alive_timeout: None,
+            read_timeout: None,
+            write_timeout: None,
+            max_requests_per_connection: None,
         }
     }
 }
